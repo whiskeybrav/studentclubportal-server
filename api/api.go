@@ -52,17 +52,14 @@ func Configure(e *echo.Echo, configuration *configuration.Config, database *sql.
 	ConfigureAuth(e)
 	ConfigureSchools(e)
 	ConfigurePosts(e)
+	ConfigureEvents(e)
 
 	e.GET("/teapot", func(c echo.Context) error {
 		return c.JSON(http.StatusTeapot, ErrorResponse{"error", "requested_body_is_short_and_stout"})
 	})
 }
 
-func fixTime(format string, date string) string {
-	timeObj, err := time.Parse(format, date)
-	if err != nil {
-		panic(err)
-	}
+func fixTime(timeObj time.Time) string {
 	return timeObj.Format("2006-01-02 15:04:05")
 }
 
