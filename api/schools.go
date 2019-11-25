@@ -4,7 +4,10 @@ import (
 	"github.com/labstack/echo"
 	"github.com/whiskeybrav/studentclubportal-server/api/authentication"
 	"github.com/whiskeybrav/studentclubportal-server/errlog"
+	"github.com/whiskeybrav/studentclubportal-server/util"
+	"golang.org/x/crypto/bcrypt"
 	"net/http"
+	"strconv"
 	"strings"
 )
 
@@ -41,7 +44,174 @@ type User struct {
 	GradeLevel int    `json:"grade_level"`
 }
 
+type UsersResponse struct {
+	Status string `json:"status"`
+	Users  []User `json:"users"`
+}
+
 func ConfigureSchools(e *echo.Echo) {
+	e.POST("/schools/register", func(c echo.Context) error {
+		if c.FormValue("fname") == "" || c.FormValue("lname") == "" || c.FormValue("email") == "" || c.FormValue("password") == "" {
+			// These are the things that we need to register the teacher
+			return c.JSON(http.StatusBadRequest, ErrorResponse{"error", "invalid_params"})
+		}
+
+		if c.FormValue("displayname") == "" || c.FormValue("name") == "" || c.FormValue("website") == "" || c.FormValue("city") == "" || len(c.FormValue("state")) != 2 || c.FormValue("address") == "" || c.FormValue("driveFolder") == "" {
+			// These are the things that we need to register the school
+			return c.JSON(http.StatusBadRequest, ErrorResponse{"error", "invalid_params"})
+		}
+
+		if !util.EmailIsValid(c.FormValue("email")) {
+			return c.JSON(http.StatusBadRequest, ErrorResponse{"error", "invalid_email"})
+		}
+
+		if !authentication.ValidatePassword(c.FormValue("password")) {
+			return c.JSON(http.StatusBadRequest, ErrorResponse{"error", "insecure_password"})
+		}
+
+		empty := ""
+
+		acctExistsErr := db.QueryRow("SELECT id FROM users WHERE email = ?", c.FormValue("email")).Scan(&empty)
+
+		if acctExistsErr == nil {
+			// the account already exists
+			return c.JSON(http.StatusBadRequest, ErrorResponse{"error", "account_exists"})
+		}
+
+		rows, err := db.Query("SELECT * FROM schools WHERE displayname = ?", c.FormValue("displayname"))
+		if err != nil {
+			errlog.LogError("seeing if display name is used", err)
+			return c.JSON(http.StatusInternalServerError, ErrorResponse{"error", "internal_server_error"})
+		}
+
+		if rows.Next() {
+			// display name used :'(
+			return c.JSON(http.StatusConflict, ErrorResponse{"error", "display_name_already_used"})
+		}
+		err = rows.Close()
+		if err != nil {
+			// I think this error would be non-fatal
+			errlog.LogError("closing rows (nonfatal)", err)
+			err = nil
+		}
+
+		_, err = db.Exec("INSERT INTO schools (displayname, name, clubheadId, facultyadviserId, website, donationsRaised, foundedDate, city, state, address, driveFolder, donationGoal, isVerified) VALUES (?, ?, -1, -1, ?, 0, NOW(), ?, ?, ?, ?, 0, -1)",
+			c.FormValue("displayname"),
+			c.FormValue("name"),
+			c.FormValue("website"),
+			c.FormValue("city"),
+			c.FormValue("state"),
+			c.FormValue("address"),
+			c.FormValue("driveFolder"),
+		)
+		if err != nil {
+			errlog.LogError("creating school", err)
+			return c.JSON(http.StatusInternalServerError, ErrorResponse{"error", "internal_server_error"})
+		}
+
+		schoolId := 0
+
+		err = db.QueryRow("SELECT id FROM schools WHERE displayname = ?", c.FormValue("displayname")).Scan(&schoolId)
+		if err != nil {
+			errlog.LogError("getting id of new school", err)
+			return c.JSON(http.StatusInternalServerError, ErrorResponse{"error", "internal_server_error"})
+		}
+
+		pwd, err := bcrypt.GenerateFromPassword([]byte(c.FormValue("password")), bcrypt.DefaultCost)
+		if err != nil {
+			errlog.LogError("generating password hash", err)
+			return c.JSON(http.StatusInternalServerError, ErrorResponse{"error", "internal_server_error"})
+		}
+
+		_, err = db.Exec("INSERT INTO users (fname, lname, email, password, schoolId, type, userLevel, registration) VALUES (?, ?, ?, ?, ?, ?, 0, NOW())", c.FormValue("fname"), c.FormValue("lname"), c.FormValue("email"), string(pwd), schoolId, UserTypeTeacher)
+		if err != nil {
+			errlog.LogError("adding user to db", err)
+			return c.JSON(http.StatusInternalServerError, ErrorResponse{"error", "internal_server_error"})
+		}
+
+		session := c.Get("session").(authentication.SessionInfo)
+
+		err = db.QueryRow("SELECT id FROM users WHERE email = ?", c.FormValue("email")).Scan(&session.UserID)
+		if err != nil {
+			errlog.LogError("getting new user id from DB", err)
+			return c.JSON(http.StatusInternalServerError, ErrorResponse{"error", "internal_server_error"})
+		}
+
+		err = authentication.SetSession(session)
+		if err != nil {
+			errlog.LogError("setting new user's id", err)
+			return c.JSON(http.StatusInternalServerError, ErrorResponse{"error", "internal_server_error"})
+		}
+
+		_, err = db.Exec("UPDATE schools SET facultyadviserId = ? WHERE displayname = ?", session.UserID, c.FormValue("displayname"))
+
+		return statusOk(c)
+	})
+
+	e.POST("/schools/setClubHead", func(c echo.Context) error {
+		newClubHeadId, err := strconv.Atoi(c.FormValue("id"))
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, ErrorResponse{"error", "invalid_params"})
+		}
+
+		session := authentication.GetSession(c)
+
+		var schoolId int
+
+		err = db.QueryRow("SELECT id from schools WHERE facultyadviserId = ?", session.UserID).Scan(&schoolId)
+		if err != nil {
+			return c.JSON(http.StatusUnauthorized, ErrorResponse{"error", "unauthorized"})
+		}
+
+		_, err = db.Exec("UPDATE schools SET clubheadId = ? WHERE id = ?", newClubHeadId, schoolId)
+		if err != nil {
+			errlog.LogError("updating club head", err)
+			return c.JSON(http.StatusUnauthorized, ErrorResponse{"error", "internal_server_error"})
+		}
+
+		return statusOk(c)
+	})
+
+	e.GET("/:schoolId/getMembers", func(c echo.Context) error {
+		schoolId, err := strconv.Atoi(c.Param("schoolId"))
+		if err != nil {
+			return c.JSON(http.StatusInternalServerError, ErrorResponse{"error", "invalid_params"})
+		}
+
+		rows, err := db.Query("SELECT id, fname, lname, showsLastname, gradeLevel FROM users WHERE schoolId = ?", schoolId)
+		if err != nil {
+			errlog.LogError("getting events", err)
+			return c.JSON(http.StatusInternalServerError, ErrorResponse{"error", "internal_server_error"})
+		}
+
+		defer rows.Close()
+
+		var users []User
+
+		for rows.Next() {
+			user := User{}
+			fname := ""
+			lname := ""
+			showsLName := 0
+
+			err := rows.Scan(&user.Id, &fname, &lname, &showsLName, &user.GradeLevel)
+			if err != nil {
+				errlog.LogError("scanning event", err)
+				return c.JSON(http.StatusInternalServerError, ErrorResponse{"error", "internal_server_error"})
+			}
+
+			if showsLName == 1 {
+				user.Name = fname + " " + lname
+			} else {
+				user.Name = fname
+			}
+
+			users = append(users, user)
+		}
+
+		return c.JSON(http.StatusOK, UsersResponse{"ok", users})
+	})
+
 	e.GET("/schools/get/:name", func(c echo.Context) error {
 		row := db.QueryRow("SELECT s.id, s.displayname, s.name, s.website, s.donationsRaised, s.donationGoal, s.foundedDate, s.city, s.state, s.address, s.driveFolder, s.isVerified, s.clubheadId, ch.fname, ch.showsLastname, ch.lname, ch.gradeLevel, fa.id, fa.fname, fa.lname FROM schools s INNER JOIN users ch on s.clubheadId = ch.id INNER JOIN users fa on s.facultyadviserId = fa.id WHERE displayname = ?;", c.Param("name"))
 
@@ -126,7 +296,7 @@ func ConfigureSchools(e *echo.Echo) {
 
 		defer rows.Close()
 
-		schools := []School{}
+		var schools []School
 		for rows.Next() {
 			school := School{}
 			isVerifiedInt := 0
