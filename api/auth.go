@@ -2,8 +2,8 @@ package api
 
 import (
 	"github.com/labstack/echo"
-	"github.com/myhomeworkspace/api-server/errorlog"
 	"github.com/whiskeybrav/studentclubportal-server/api/authentication"
+	"github.com/whiskeybrav/studentclubportal-server/errlog"
 	"github.com/whiskeybrav/studentclubportal-server/util"
 	"golang.org/x/crypto/bcrypt"
 	"net/http"
@@ -66,13 +66,13 @@ func ConfigureAuth(e *echo.Echo) {
 
 		pwd, err := bcrypt.GenerateFromPassword([]byte(c.FormValue("password")), bcrypt.DefaultCost)
 		if err != nil {
-			errorlog.LogError("generating password hash", err)
+			errlog.LogError("generating password hash", err)
 			return c.JSON(http.StatusInternalServerError, ErrorResponse{"error", "internal_server_error"})
 		}
 
 		_, err = db.Exec("INSERT INTO users (fname, lname, email, password, schoolId, type, userLevel, registration) VALUES (?, ?, ?, ?, ?, ?, 0, NOW())", c.FormValue("fname"), c.FormValue("lname"), c.FormValue("email"), string(pwd), c.FormValue("schoolId"), UserTypeTeacher)
 		if err != nil {
-			errorlog.LogError("adding user to db", err)
+			errlog.LogError("adding user to db", err)
 			return c.JSON(http.StatusInternalServerError, ErrorResponse{"error", "internal_server_error"})
 		}
 
@@ -80,13 +80,13 @@ func ConfigureAuth(e *echo.Echo) {
 
 		err = db.QueryRow("SELECT id FROM users WHERE email = ?", c.FormValue("email")).Scan(&session.UserID)
 		if err != nil {
-			errorlog.LogError("getting new user id from DB", err)
+			errlog.LogError("getting new user id from DB", err)
 			return c.JSON(http.StatusInternalServerError, ErrorResponse{"error", "internal_server_error"})
 		}
 
 		err = authentication.SetSession(session)
 		if err != nil {
-			errorlog.LogError("getting new user id from DB", err)
+			errlog.LogError("getting new user id from DB", err)
 			return c.JSON(http.StatusInternalServerError, ErrorResponse{"error", "internal_server_error"})
 		}
 
@@ -133,7 +133,7 @@ func ConfigureAuth(e *echo.Echo) {
 
 		pwd, err := bcrypt.GenerateFromPassword([]byte(c.FormValue("password")), bcrypt.DefaultCost)
 		if err != nil {
-			errorlog.LogError("generating password hash", err)
+			errlog.LogError("generating password hash", err)
 			return c.JSON(http.StatusInternalServerError, ErrorResponse{"error", "internal_server_error"})
 		}
 
@@ -149,7 +149,7 @@ func ConfigureAuth(e *echo.Echo) {
 			c.FormValue("howDidYouHear"),
 		)
 		if err != nil {
-			errorlog.LogError("adding user to db", err)
+			errlog.LogError("adding user to db", err)
 			return c.JSON(http.StatusInternalServerError, ErrorResponse{"error", "internal_server_error"})
 		}
 
@@ -157,13 +157,13 @@ func ConfigureAuth(e *echo.Echo) {
 
 		err = db.QueryRow("SELECT id FROM users WHERE email = ?", c.FormValue("email")).Scan(&session.UserID)
 		if err != nil {
-			errorlog.LogError("getting new user id from DB", err)
+			errlog.LogError("getting new user id from DB", err)
 			return c.JSON(http.StatusInternalServerError, ErrorResponse{"error", "internal_server_error"})
 		}
 
 		err = authentication.SetSession(session)
 		if err != nil {
-			errorlog.LogError("getting new user id from DB #2", err)
+			errlog.LogError("getting new user id from DB #2", err)
 			return c.JSON(http.StatusInternalServerError, ErrorResponse{"error", "internal_server_error"})
 		}
 
@@ -212,7 +212,7 @@ func ConfigureAuth(e *echo.Echo) {
 
 		err := authentication.SetSession(session)
 		if err != nil {
-			errorlog.LogError("logging user out", err)
+			errlog.LogError("logging user out", err)
 			return c.JSON(http.StatusInternalServerError, ErrorResponse{"error", "internal_server_error"})
 		}
 
@@ -244,7 +244,7 @@ func ConfigureAuth(e *echo.Echo) {
 		)
 
 		if err != nil {
-			errorlog.LogError("getting user info", err)
+			errlog.LogError("getting user info", err)
 			return c.JSON(http.StatusInternalServerError, ErrorResponse{"error", "internal_server_error"})
 		}
 

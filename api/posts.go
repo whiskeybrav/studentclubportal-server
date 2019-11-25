@@ -3,8 +3,8 @@ package api
 import (
 	"fmt"
 	"github.com/labstack/echo"
-	"github.com/myhomeworkspace/api-server/errorlog"
 	"github.com/whiskeybrav/studentclubportal-server/api/authentication"
+	"github.com/whiskeybrav/studentclubportal-server/errlog"
 	"net/http"
 	"strconv"
 )
@@ -32,7 +32,7 @@ func ConfigurePosts(e *echo.Echo) {
 
 		rows, err := db.Query("SELECT p.id, title, date, text, p.schoolId, u.fname, u.lname, u.showsLastname FROM posts p INNER JOIN users u on p.authorId = u.id WHERE p.schoolId = ? ", schoolId)
 		if err != nil {
-			errorlog.LogError("getting posts", err)
+			errlog.LogError("getting posts", err)
 			return c.JSON(http.StatusInternalServerError, ErrorResponse{"error", "internal_server_error"})
 		}
 
@@ -44,7 +44,7 @@ func ConfigurePosts(e *echo.Echo) {
 			var showsLastname int
 			err := rows.Scan(&post.ID, &post.Title, &post.Date, &post.Text, &post.SchoolID, &firstname, &lastname, &showsLastname)
 			if err != nil {
-				errorlog.LogError("getting posts", err)
+				errlog.LogError("getting posts", err)
 				return c.JSON(http.StatusInternalServerError, ErrorResponse{"error", "internal_server_error"})
 			}
 
@@ -79,7 +79,7 @@ func ConfigurePosts(e *echo.Echo) {
 
 		_, err = db.Exec("INSERT INTO posts (title, schoolId, date, authorId, `text`) VALUES (?, ?, NOW(), ?, ?)", c.FormValue("title"), schoolId, session.UserID, c.FormValue("text"))
 		if err != nil {
-			errorlog.LogError("adding post", err)
+			errlog.LogError("adding post", err)
 			return c.JSON(http.StatusInternalServerError, ErrorResponse{"error", "internal_server_error"})
 		}
 
@@ -106,7 +106,7 @@ func ConfigurePosts(e *echo.Echo) {
 
 		err = db.QueryRow("SELECT schoolId from posts WHERE id = ?", postId).Scan(&postSchoolId)
 		if err != nil {
-			errorlog.LogError("getting id of post to delete", err)
+			errlog.LogError("getting id of post to delete", err)
 			return c.JSON(http.StatusInternalServerError, ErrorResponse{"error", "internal_server_error"})
 		}
 
@@ -116,7 +116,7 @@ func ConfigurePosts(e *echo.Echo) {
 
 		_, err = db.Exec("DELETE FROM posts WHERE id = ?", postId)
 		if err != nil {
-			errorlog.LogError("deleting post", err)
+			errlog.LogError("deleting post", err)
 			return c.JSON(http.StatusInternalServerError, ErrorResponse{"error", "internal_server_error"})
 		}
 
