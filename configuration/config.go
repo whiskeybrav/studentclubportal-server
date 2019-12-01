@@ -5,6 +5,7 @@ import "github.com/BurntSushi/toml"
 type Config struct {
 	Database DatabaseConfig
 	Server   ServerConfig
+	Mail     MailConfig
 }
 
 type DatabaseConfig struct {
@@ -15,6 +16,17 @@ type DatabaseConfig struct {
 
 type ServerConfig struct {
 	Address string
+	CORS    string
+}
+
+type MailConfig struct {
+	FromAddress  string
+	FromDisplay  string
+	SendDomain   string
+	SMTPHost     string
+	SMTPPort     int
+	SMTPUsername string
+	SMTPPassword string
 }
 
 func Configure() Config {

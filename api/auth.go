@@ -1,9 +1,11 @@
 package api
 
 import (
+	"github.com/NoteToScreen/maily-go/maily"
 	"github.com/labstack/echo"
 	"github.com/whiskeybrav/studentclubportal-server/api/authentication"
 	"github.com/whiskeybrav/studentclubportal-server/errlog"
+	"github.com/whiskeybrav/studentclubportal-server/mail"
 	"github.com/whiskeybrav/studentclubportal-server/util"
 	"golang.org/x/crypto/bcrypt"
 	"net/http"
@@ -22,6 +24,8 @@ type me struct {
 	ShowsLastName bool   `json:"shows_last_name"`
 	Email         string `json:"email"`
 	SchoolId      int    `json:"school_id"`
+	School        string `json:"school"`
+	SchoolName    string `json:"school_name"`
 	Type          int    `json:"type"`
 	GradeLevel    int    `json:"grade_level"`
 	HowDidYouHear string `json:"how_did_you_hear"`
@@ -32,6 +36,11 @@ type me struct {
 type MeResponse struct {
 	Status string `json:"status"`
 	Me     me     `json:"me"`
+}
+
+type LoginResponse struct {
+	Status string `json:"status"`
+	School string `json:"school"`
 }
 
 func ConfigureAuth(e *echo.Echo) {
@@ -180,8 +189,9 @@ func ConfigureAuth(e *echo.Echo) {
 
 		passwordHash := ""
 		id := -1
+		schoolDisplayName := ""
 
-		err := db.QueryRow("SELECT password, id FROM users WHERE email = ?", email).Scan(&passwordHash, &id)
+		err := db.QueryRow("SELECT u.password, u.id,  s.displayname FROM users u INNER JOIN schools s ON u.schoolId = s.id WHERE email = ?", email).Scan(&passwordHash, &id, &schoolDisplayName)
 		if err != nil {
 			return c.JSON(http.StatusUnauthorized, ErrorResponse{"error", "invalid_login"})
 		}
@@ -198,7 +208,7 @@ func ConfigureAuth(e *echo.Echo) {
 			return c.JSON(http.StatusInternalServerError, ErrorResponse{"error", "internal_server_error"})
 		}
 
-		return c.JSON(http.StatusOK, StatusResponse{"ok"})
+		return c.JSON(http.StatusOK, LoginResponse{"ok", schoolDisplayName})
 	})
 
 	e.POST("/auth/logout", func(c echo.Context) error {
@@ -230,7 +240,7 @@ func ConfigureAuth(e *echo.Echo) {
 		me := me{}
 		showsLastNameInt := 0
 
-		err := db.QueryRow("SELECT fname, lname, showsLastname, email, schoolId, type, gradeLevel, howDidYouHear, userLevel, registration FROM users WHERE id = ?", uid).Scan(
+		err := db.QueryRow("SELECT u.fname, u.lname, u.showsLastname, u.email, u.schoolId, u.type, u.gradeLevel, u.howDidYouHear, u.userLevel, u.registration, s.displayname, s.name FROM users u INNER JOIN schools s ON u.schoolId = s.id WHERE u.id = ?", uid).Scan(
 			&me.Fname,
 			&me.Lname,
 			&showsLastNameInt,
@@ -241,6 +251,8 @@ func ConfigureAuth(e *echo.Echo) {
 			&me.HowDidYouHear,
 			&me.UserLevel,
 			&me.Registration,
+			&me.School,
+			&me.SchoolName,
 		)
 
 		if err != nil {
@@ -249,7 +261,80 @@ func ConfigureAuth(e *echo.Echo) {
 		}
 
 		me.ShowsLastName = showsLastNameInt == 1
+		me.Id = uid
 
 		return c.JSON(http.StatusOK, MeResponse{"ok", me})
+	})
+
+	e.POST("/auth/requestPasswordReset", func(c echo.Context) error {
+		if c.FormValue("email") == "" {
+			return c.JSON(http.StatusBadRequest, ErrorResponse{"error", "invalid_params"})
+		}
+
+		fname := ""
+		lname := ""
+		id := ""
+
+		err := db.QueryRow("SELECT fname, lname, id FROM users WHERE email = ?", c.FormValue("email")).Scan(&fname, &lname, &id)
+		if err != nil {
+			return c.JSON(http.StatusNotFound, ErrorResponse{"error", "email_not_found"})
+		}
+
+		key, err := authentication.GenerateRandomString(26)
+		if err != nil {
+			errlog.LogError("generating password reset key", err)
+			return c.JSON(http.StatusInternalServerError, ErrorResponse{"error", "internal_server_error"})
+		}
+
+		_, err = db.Exec("INSERT INTO passwordResets (userId, `key`, expiry) VALUES (?, ?, ADDDATE(NOW(), INTERVAL 1 DAY))", id, key)
+		if err != nil {
+			errlog.LogError("adding password reset", err)
+			return c.JSON(http.StatusInternalServerError, ErrorResponse{"error", "internal_server_error"})
+		}
+
+		_, err = mail.Mail.SendMail(fname+" "+lname, c.FormValue("email"), "passwordReset", maily.TemplateData{
+			"fname": fname,
+			"key":   key,
+		}, maily.FuncMap{}, maily.FuncMap{})
+		if err != nil {
+			errlog.LogError("sending mail", err)
+			return c.JSON(http.StatusInternalServerError, ErrorResponse{"error", "internal_server_error"})
+		}
+
+		return c.JSON(http.StatusOK, StatusResponse{"ok"})
+	})
+
+	e.POST("/auth/resetPassword", func(c echo.Context) error {
+		if c.FormValue("password") == "" || c.FormValue("key") == "" {
+			return c.JSON(http.StatusBadRequest, ErrorResponse{"error", "invalid_params"})
+		}
+
+		if !authentication.ValidatePassword(c.FormValue("password")) {
+			return c.JSON(http.StatusBadRequest, ErrorResponse{"error", "insecure_password"})
+		}
+
+		userId := 0
+
+		err := db.QueryRow("SELECT userId FROM passwordResets WHERE `key` = ? AND expiry > NOW() AND used != 1", c.FormValue("key")).Scan(&userId)
+		if err != nil {
+			return c.JSON(http.StatusUnauthorized, ErrorResponse{"error", "no_reset_available"})
+		}
+
+		hashedPw, err := bcrypt.GenerateFromPassword([]byte(c.FormValue("password")), bcrypt.DefaultCost)
+		if err != nil {
+			errlog.LogError("hashing new password", err)
+			return c.JSON(http.StatusInternalServerError, ErrorResponse{"error", "internal_server_error"})
+		}
+
+		_, err = db.Exec("UPDATE users SET password = ? WHERE id = ?", hashedPw, userId)
+		if err != nil {
+			errlog.LogError("setting new password", err)
+			return c.JSON(http.StatusInternalServerError, ErrorResponse{"error", "internal_server_error"})
+		}
+
+		_, _ = db.Exec("UPDATE passwordResets SET used = 1 WHERE `key` = ?", c.FormValue("key"))
+		// if this fails who cares
+
+		return c.JSON(http.StatusOK, StatusResponse{"ok"})
 	})
 }

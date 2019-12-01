@@ -1,0 +1,9 @@
+{{template "header"}}
+<p>Hi {{.Data.fname}},</p>
+<p>You're getting this email because you requested a password reset for your Whiskey Bravo Student Clubs account.</p>
+<p>To reset your password, simply click <a href="https://clubs.whiskeybravo.org/#/resetpassword/{{.Data.key}}">here</a>.
+    Note that that link will expire in 24 hours.</p>
+<p>If this wasn't you, you can ignore this email.</p>
+<p>Thank you,</p>
+<p>Whiskey Bravo Team</p>
+{{template "footer"}}

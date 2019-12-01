@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"unicode"
 )
 
 type SchoolResponse struct {
@@ -56,7 +57,7 @@ func ConfigureSchools(e *echo.Echo) {
 			return c.JSON(http.StatusBadRequest, ErrorResponse{"error", "invalid_params"})
 		}
 
-		if c.FormValue("displayname") == "" || c.FormValue("name") == "" || c.FormValue("website") == "" || c.FormValue("city") == "" || len(c.FormValue("state")) != 2 || c.FormValue("address") == "" || c.FormValue("driveFolder") == "" {
+		if c.FormValue("displayname") == "" || !isLetter(c.FormValue("displayname")) || c.FormValue("name") == "" || c.FormValue("website") == "" || c.FormValue("city") == "" || len(c.FormValue("state")) != 2 || c.FormValue("address") == "" {
 			// These are the things that we need to register the school
 			return c.JSON(http.StatusBadRequest, ErrorResponse{"error", "invalid_params"})
 		}
@@ -96,13 +97,13 @@ func ConfigureSchools(e *echo.Echo) {
 		}
 
 		_, err = db.Exec("INSERT INTO schools (displayname, name, clubheadId, facultyadviserId, website, donationsRaised, foundedDate, city, state, address, driveFolder, donationGoal, isVerified) VALUES (?, ?, -1, -1, ?, 0, NOW(), ?, ?, ?, ?, 0, -1)",
-			c.FormValue("displayname"),
+			strings.ToLower(c.FormValue("displayname")),
 			c.FormValue("name"),
 			c.FormValue("website"),
 			c.FormValue("city"),
 			c.FormValue("state"),
 			c.FormValue("address"),
-			c.FormValue("driveFolder"),
+			"https://drive.google.com",
 		)
 		if err != nil {
 			errlog.LogError("creating school", err)
@@ -213,15 +214,13 @@ func ConfigureSchools(e *echo.Echo) {
 	})
 
 	e.GET("/schools/get/:name", func(c echo.Context) error {
-		row := db.QueryRow("SELECT s.id, s.displayname, s.name, s.website, s.donationsRaised, s.donationGoal, s.foundedDate, s.city, s.state, s.address, s.driveFolder, s.isVerified, s.clubheadId, ch.fname, ch.showsLastname, ch.lname, ch.gradeLevel, fa.id, fa.fname, fa.lname FROM schools s INNER JOIN users ch on s.clubheadId = ch.id INNER JOIN users fa on s.facultyadviserId = fa.id WHERE displayname = ?;", c.Param("name"))
+		row := db.QueryRow("SELECT s.id, s.displayname, s.name, s.website, s.donationsRaised, s.donationGoal, s.foundedDate, s.city, s.state, s.address, s.driveFolder, s.isVerified, s.clubheadId, ch.fname, ch.showsLastname, ch.lname, ch.gradeLevel, fa.id, fa.fname, fa.lname FROM schools s LEFT OUTER JOIN users ch ON s.clubheadId = ch.id INNER JOIN users fa ON s.facultyadviserId = fa.id WHERE displayname = ?;", c.Param("name"))
 
 		facultyAdviser := User{GradeLevel: -1}
 		clubHead := User{}
 		school := School{}
 
-		clubHeadFName := ""
-		clubHeadLName := ""
-		clubHeadLNameShown := 0
+		var clubHeadFName, clubHeadLName, clubHeadLNameShown, clubHeadGradeLevel []byte
 
 		adviserFName := ""
 		adviserLName := ""
@@ -245,18 +244,27 @@ func ConfigureSchools(e *echo.Echo) {
 			&clubHeadFName,
 			&clubHeadLNameShown,
 			&clubHeadLName,
-			&clubHead.GradeLevel,
+			&clubHeadGradeLevel,
 			&facultyAdviser.Id,
 			&adviserFName,
 			&adviserLName,
 		)
 
-		facultyAdviser.Name = adviserFName + " " + adviserLName
-		if clubHeadLNameShown == 1 {
-			clubHead.Name = clubHeadFName + " " + clubHeadLName
-		} else {
-			clubHead.Name = clubHeadFName
+		if err != nil {
+			return c.JSON(http.StatusNotFound, checkErr(err, "invalid_school"))
 		}
+
+		facultyAdviser.Name = adviserFName + " " + adviserLName
+		chln, _ := strconv.Atoi(string(clubHeadLNameShown))
+		chgl, _ := strconv.Atoi(string(clubHeadGradeLevel))
+
+		if chln == 1 {
+			clubHead.Name = string(clubHeadFName) + " " + string(clubHeadLName)
+		} else {
+			clubHead.Name = string(clubHeadFName)
+		}
+
+		clubHead.GradeLevel = chgl
 
 		school.IsVerified = isVerifiedInt == 1
 
@@ -265,12 +273,12 @@ func ConfigureSchools(e *echo.Echo) {
 
 		userID := c.Get("session").(authentication.SessionInfo).UserID
 
-		if !school.IsVerified && userID != school.ClubHead.Id && userID != school.FacultyAdviser.Id {
-			return c.JSON(http.StatusUnauthorized, ErrorResponse{"error", "school_unverified"})
+		if school.IsVerified {
+			return c.JSON(http.StatusOK, SchoolResponse{"ok", school})
 		}
 
-		if (checkErr(err, "invalid_school") != ErrorResponse{}) {
-			return c.JSON(http.StatusNotFound, checkErr(err, "invalid_school"))
+		if userID == -1 || (userID != school.ClubHead.Id && userID != school.FacultyAdviser.Id) {
+			return c.JSON(http.StatusUnauthorized, ErrorResponse{"error", "school_unverified"})
 		}
 
 		return c.JSON(http.StatusOK, SchoolResponse{"ok", school})
@@ -357,4 +365,13 @@ func ConfigureSchools(e *echo.Echo) {
 
 		return c.JSON(http.StatusOK, SchoolsResponse{"ok", schools})
 	})
+}
+
+func isLetter(s string) bool {
+	for _, r := range s {
+		if !unicode.IsLetter(r) {
+			return false
+		}
+	}
+	return true
 }

@@ -84,6 +84,7 @@ func SessionMiddleware(next echo.HandlerFunc) echo.HandlerFunc {
 			newToken.Value = token
 			newToken.Expires = time.Now().Add(24 * 7 * time.Hour)
 			newToken.HttpOnly = true
+			newToken.Path = "/"
 			c.SetCookie(newToken)
 
 			c.Set("session", SessionInfo{-1, token})

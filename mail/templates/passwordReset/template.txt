@@ -1,0 +1,10 @@
+Hi {{.Data.fname}},
+
+You're getting this email because you requested a password reset for your Whiskey Bravo Student Clubs account.
+
+To reset your password, simply go to this link: https://clubs.whiskeybravo.org/#/resetpassword/{{.Data.key}}. Note that it will expire in 24 hours.
+
+If this wasn't you, you can ignore this email.
+
+Thank you,
+Whiskey Bravo Team
