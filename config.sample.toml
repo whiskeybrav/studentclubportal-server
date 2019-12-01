@@ -1,0 +1,17 @@
+[database]
+username = "whiskeybrav"
+password = "whiskeybrav"
+database = "whiskeybrav"
+
+[server]
+address = ":8080"
+cors = "https://clubs.whiskeybravo.org"
+
+[mail]
+FromAddress = "hello@whiskeybravo.org"
+FromDisplay = "Whiskey Bravo Student Clubs <hello@whiskeybravo.org>"
+SendDomain = "whiskeybravo.org"
+SMTPHost = "localhost"
+SMTPPort = 1025
+SMTPUsername = "accounts@whiskeybravo.org"
+SMTPPassword = "password123"
