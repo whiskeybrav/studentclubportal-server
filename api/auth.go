@@ -268,7 +268,7 @@ func ConfigureAuth(e *echo.Echo) {
 
 	e.POST("/auth/requestPasswordReset", func(c echo.Context) error {
 		if c.FormValue("email") == "" {
-			return c.JSON(http.StatusBadRequest, ErrorResponse{"error", "invalid_params"})
+			return c.JSON(http.StatusBadRequest, ErrorResponse{"error", "missing_params"})
 		}
 
 		fname := ""
@@ -306,7 +306,7 @@ func ConfigureAuth(e *echo.Echo) {
 
 	e.POST("/auth/resetPassword", func(c echo.Context) error {
 		if c.FormValue("password") == "" || c.FormValue("key") == "" {
-			return c.JSON(http.StatusBadRequest, ErrorResponse{"error", "invalid_params"})
+			return c.JSON(http.StatusBadRequest, ErrorResponse{"error", "missing_params"})
 		}
 
 		if !authentication.ValidatePassword(c.FormValue("password")) {
