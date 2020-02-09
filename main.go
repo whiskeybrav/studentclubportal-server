@@ -1,6 +1,9 @@
 package main
 
 import (
+	"fmt"
+	"strings"
+
 	"github.com/labstack/echo"
 	"github.com/labstack/echo/middleware"
 	"github.com/whiskeybrav/studentclubportal-server/api"
@@ -20,6 +23,10 @@ func main() {
 
 	e := echo.New()
 
+	e.HideBanner = true
+
+	fmt.Println(logotype)
+
 	e.Pre(middleware.RemoveTrailingSlash())
 	e.Use(authentication.SessionMiddleware)
 	e.Use(middleware.RequestID())
@@ -33,3 +40,14 @@ func main() {
 
 	e.Logger.Fatal(e.Start(config.Server.Address))
 }
+
+var logotype = strings.Replace(`
+__        ___     _     _              ____
+\ \      / / |__ (_)___| | _____ _   _| __ ) _ __ __ ___   _____   :::  ::: ::::==  =======
+ \ \ /\ / /| '_ \| / __| |/ / _ \ | | |  _ \| '__/ _f \ \ / / _ \  :::  ::: :::     ===  ===
+  \ V  V / | | | | \__ \   <  __/ |_| | |_) | | | (_| |\ V / (_) | :::  :::  :::==  ========
+   \_/\_/  |_| |_|_|___/_|\_\___|\__, |____/|_|  \__,_| \_/ \___/  ===  ===     === ===  ===
+                                 |___/                             ======== ======  ===  ===
+
+                                 studentclubportal-server
+`, "f", "`", -1)
