@@ -27,6 +27,8 @@ type MailConfig struct {
 	SMTPPort     int
 	SMTPUsername string
 	SMTPPassword string
+	AdminName    string
+	AdminEmail   string
 }
 
 func Configure() Config {

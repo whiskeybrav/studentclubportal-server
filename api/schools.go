@@ -1,15 +1,18 @@
 package api
 
 import (
-	"github.com/labstack/echo"
-	"github.com/whiskeybrav/studentclubportal-server/api/authentication"
-	"github.com/whiskeybrav/studentclubportal-server/errlog"
-	"github.com/whiskeybrav/studentclubportal-server/util"
-	"golang.org/x/crypto/bcrypt"
 	"net/http"
 	"strconv"
 	"strings"
 	"unicode"
+
+	"github.com/NoteToScreen/maily-go/maily"
+	"github.com/labstack/echo"
+	"github.com/whiskeybrav/studentclubportal-server/api/authentication"
+	"github.com/whiskeybrav/studentclubportal-server/errlog"
+	"github.com/whiskeybrav/studentclubportal-server/mail"
+	"github.com/whiskeybrav/studentclubportal-server/util"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type SchoolResponse struct {
@@ -145,6 +148,11 @@ func ConfigureSchools(e *echo.Echo) {
 		}
 
 		_, err = db.Exec("UPDATE schools SET facultyadviserId = ? WHERE displayname = ?", session.UserID, c.FormValue("displayname"))
+
+		_, err = mail.Mail.SendMail(config.Mail.AdminName, config.Mail.AdminEmail, "newSchool", maily.TemplateData{}, maily.FuncMap{}, maily.FuncMap{})
+		if err != nil {
+			errlog.LogError("sending admin registration email", err)
+		}
 
 		return statusOk(c)
 	})

@@ -15,3 +15,5 @@ SMTPHost = "localhost"
 SMTPPort = 1025
 SMTPUsername = "accounts@whiskeybravo.org"
 SMTPPassword = "password123"
+AdminName = "Joe Schmo"
+AdminEmail = "jschmo@example.com"
